@@ -1,0 +1,198 @@
+================================================================================
+GUÍA EXPLICATIVA PASO A PASO: WEB SCRAPING (POKÉMON) + PANDAS + STREAMLIT
+================================================================================
+
+1. ¿QUÉ ES ESTE PROYECTO EN RESUMEN?
+--------------------------------------------------------------------------------
+Este proyecto resuelve de la forma más sencilla, limpia y completa la práctica
+"Extracción y Análisis de Datos con Web Scraping y Streamlit" usando la web de
+Pokémon propuesta en el PDF: ScrapeMe (https://scrapeme.live/shop/).
+
+Se divide en 2 partes muy claras:
+- PARTE 1 (scraper.py): Entra en la tienda web de Pokémon con BeautifulSoup,
+  extrae la información de los Pokémon (tanto de la lista como entrando en la
+  ficha de cada uno), limpia los textos para convertir precios, pesos y stock
+  en números reales, y lo guarda todo en un archivo "pokemons.csv" con Pandas.
+- PARTE 2 (app.py): Lee el archivo "pokemons.csv" con Pandas y crea una página
+  web interactiva con Streamlit donde puedes filtrar por categoría, precio,
+  stock o nombre, ver la tabla con las fotos de cada Pokémon y analizar 4
+  gráficos con sus conclusiones de negocio.
+
+
+2. MAPA DE ARCHIVOS Y CARPETAS (¿QUÉ ES CADA COSA?)
+--------------------------------------------------------------------------------
+proyecto scraping/
+│
+├── scraper.py                 --> PARTE 1: Código que hace el Web Scraping y crea el CSV.
+├── pokemons.csv               --> El archivo con los 48 Pokémon extraídos y limpios.
+├── app.py                     --> PARTE 2: Código del dashboard interactivo con Streamlit.
+├── explicacion_proyecto.txt   --> Este documento explicando todo paso a paso.
+├── requirements.txt           --> Lista de librerías que necesita el proyecto.
+├── README.md                  --> Presentación del proyecto para tu repositorio de GitHub.
+├── .gitignore                 --> Para que Git no suba la carpeta .venv a GitHub.
+└── .venv/                     --> Entorno virtual con Python, BeautifulSoup, Pandas y Streamlit.
+
+
+3. EXPLICACIÓN PASO A PASO DE "scraper.py" (PARTE 1: WEB SCRAPING)
+--------------------------------------------------------------------------------
+El archivo "scraper.py" está pensado para sacar la máxima nota en la rúbrica
+(criterios de Ética/Legalidad, Calidad del dato y Comprensión del código):
+
+PASO 1: Cabecera User-Agent y comprobación de robots.txt (Líneas 13-47)
+   - ¿Qué hace?:
+     1) Define HEADERS = {"User-Agent": "..."} para identificarnos ante el
+        servidor web.
+     2) La función "comprobar_robots_txt()" descarga primero
+        https://scrapeme.live/robots.txt y comprueba que la ruta "/shop/" no
+        esté prohibida ("Disallow: /shop").
+   - ¿Por qué lo hacemos así? (Justificación para el profesor):
+     En la rúbrica, el 20% de la nota es "Ética, legalidad y buenas prácticas".
+     Hacer peticiones sin User-Agent o sin mirar robots.txt se considera
+     scraping agresivo o poco ético.
+
+PASO 2: Funciones de limpieza de datos en Python (Líneas 50-73)
+   - ¿Qué hacen?:
+     * "limpiar_precio('£63.00')" -> Quita el símbolo de la libra (£) con una
+       expresión regular y lo convierte a número decimal float (63.0).
+     * "limpiar_entero('45 in stock')" -> Extrae solo los dígitos y los
+       convierte a número entero int (45).
+     * "limpiar_peso('15.2 kg')" -> Quita las letras "kg" y devuelve un número
+       decimal float (15.2).
+   - ¿Por qué lo hacemos así? (Justificación para el profesor):
+     En la rúbrica ("Calidad de los datos - 15%"), para tener Excelente (9-10)
+     no vale guardar "£63.00" o "15.2 kg" como texto, porque entonces luego no
+     puedes filtrar por rangos numéricos ni calcular medias en Pandas.
+
+PASO 3: Función "extraer_detalle_pokemon(url_ficha)" (Líneas 76-124)
+   - ¿Qué hace?:
+     Entra dentro de la página individual de cada Pokémon (por ejemplo,
+     https://scrapeme.live/shop/Bulbasaur/) y extrae los datos que no aparecen
+     en la portada:
+     * Descripción: usa el selector "div.woocommerce-product-details__short-description"
+     * Existencias (Stock): usa el selector "p.stock"
+     * SKU (ID del producto): usa el selector "span.sku"
+     * Categoría: usa "span.posted_in a" y descarta la palabra genérica
+       "Pokemon" para quedarse con el tipo real (Seed, Lizard, Flame, Mouse...).
+     * Peso: usa "tr.woocommerce-product-attributes-item--weight td".
+
+PASO 4: Función "hacer_scraping(num_paginas=3)" (Líneas 127-191)
+   - ¿Qué hace?:
+     Recorre las páginas 1, 2 y 3 del catálogo (16 Pokémon por página = 48
+     Pokémon en total).
+     En cada página:
+     1) Busca todas las tarjetas de producto con el selector CSS "li.product".
+     2) Extrae el nombre ("h2.woocommerce-loop-product__title"), el precio
+        ("span.price"), el enlace ("a.woocommerce-LoopProduct-link") y la
+        imagen ("img").
+     3) Usa "urljoin()" para convertir rutas relativas (como "../wp-content/...")
+        en enlaces completos ("https://scrapeme.live/wp-content/...").
+     4) Hace una pausa con "time.sleep(0.2)" antes de pedir la ficha para no
+        saturar el servidor (Rate Limiting).
+
+PASO 5: Función "guardar_csv()" (Líneas 194-207)
+   - ¿Qué hace?:
+     Convierte la lista de Pokémon en un DataFrame de Pandas ("pd.DataFrame"),
+     elimina duplicados por seguridad ("drop_duplicates") y guarda el archivo
+     "pokemons.csv" con codificación UTF-8.
+
+
+4. EXPLICACIÓN PASO A PASO DE "app.py" (PARTE 2: STREAMLIT Y PANDAS)
+--------------------------------------------------------------------------------
+El archivo "app.py" construye el dashboard interactivo en menos de 180 líneas:
+
+PASO 1: Carga de datos con caché (Líneas 14-22)
+   - La función "cargar_datos()" usa "pd.read_csv('pokemons.csv')".
+   - Lleva el decorador "@st.cache_data" para que Streamlit guarde el CSV en
+     memoria y la aplicación vaya súper rápida al mover los filtros.
+
+PASO 2: Filtros interactivos en la barra lateral (Líneas 36-69)
+   - "st.sidebar.text_input": Permite buscar un Pokémon escribiendo su nombre.
+   - "st.sidebar.multiselect": Permite elegir una o varias categorías (Seed,
+     Flame, Mouse, etc.).
+   - "st.sidebar.slider" (Precio): Permite elegir el precio mínimo y máximo (£).
+   - "st.sidebar.slider" (Stock): Permite filtrar por cantidad de unidades en
+     almacén.
+
+PASO 3: Filtrado del DataFrame con Pandas (Líneas 72-83)
+   - Filtra las filas del DataFrame combinando todas las condiciones elegidas
+     por el usuario con el operador "&" (AND) e ".isin()".
+
+PASO 4: Métricas (KPIs) y Tabla con imágenes (Líneas 86-119)
+   - Muestra 4 tarjetas arriba ("st.metric"): Total de Pokémon filtrados,
+     Precio Medio (£), Stock Total y Peso Medio (kg).
+   - Muestra la tabla interactiva ("st.dataframe") usando
+     "st.column_config.ImageColumn" para que la columna "imagen_url" se vea
+     directamente como la foto del Pokémon.
+
+PASO 5: Gráficos y Análisis Crítico de Resultados (Líneas 123-196)
+   - En la rúbrica, el 15% de la nota es "Análisis crítico de los resultados:
+     los gráficos responden a preguntas de negocio e interpretan los datos, no
+     solo los pintan".
+   - Por eso cada gráfico tiene su pregunta de negocio y un cuadro "st.info()"
+     debajo que calcula e interpreta automáticamente el resultado:
+     1) Gráfico de barras: ¿Cuáles son los Pokémon más caros?
+     2) Gráfico de barras (agrupado con groupby): ¿Qué categoría tiene mayor
+        precio medio?
+     3) Gráfico de dispersión (scatter_chart): ¿Influye la escasez de stock en
+        el precio? (Calcula la correlación con ".corr()" de Pandas).
+     4) Gráfico de dispersión (scatter_chart): ¿Los Pokémon más pesados son más
+        caros? (Calcula la correlación entre peso y precio).
+
+
+5. ¿CÓMO EJECUTAR EL PROYECTO PASO A PASO?
+--------------------------------------------------------------------------------
+Abre la terminal en la carpeta del proyecto ("E:\Acceso a datos\proyecto scraping"):
+
+1) Para ejecutar el scraping y crear/actualizar "pokemons.csv":
+   .\.venv\bin\python.exe scraper.py
+
+2) Para abrir la página web interactiva de Streamlit:
+   .\.venv\bin\python.exe -m streamlit run app.py
+
+   (Se abrirá automáticamente en tu navegador en http://localhost:8501).
+
+
+6. CHULETA DE PREGUNTAS Y RESPUESTAS PARA LA DEFENSA EN CLASE (MUY IMPORTANTE)
+--------------------------------------------------------------------------------
+El PDF avisa: "Además, deberás responder algunas preguntas rápidas y básicas en
+clase sobre la práctica". Aquí tienes las preguntas típicas del profesor y qué
+responder para sacar un 10:
+
+PREGUNTA 1: "¿Qué buenas prácticas éticas y legales has aplicado en tu scraping?"
+RESPUESTA:
+"Tres cosas: primero, compruebo el archivo robots.txt antes de empezar para
+verificar que la ruta /shop/ está permitida. Segundo, envío un User-Agent en las
+cabeceras HTTP (headers) para identificar mi script. Y tercero, aplico pausas
+con time.sleep() entre peticiones (rate limiting) para no saturar el servidor."
+
+PREGUNTA 2: "¿Por qué elegiste BeautifulSoup y no Selenium o Scrapy?"
+RESPUESTA:
+"Porque la tienda ScrapeMe es una página web con HTML estático (generada con
+WooCommerce/WordPress). BeautifulSoup es la herramienta ideal para HTML estático
+porque es mucho más ligera, rápida y sencilla que Selenium (que es para webs
+dinámicas con JavaScript) o Scrapy (que es para proyectos masivos)."
+
+PREGUNTA 3: "¿Por qué usaste esos selectores CSS como 'li.product' o 'span.posted_in a'?"
+RESPUESTA:
+"Inspeccioné el HTML de la web con las herramientas de desarrollador del
+navegador (F12). Vi que WooCommerce mete cada tarjeta de Pokémon en un <li class='product'>.
+Además, en las categorías ('span.posted_in a'), todos los productos tenían la
+categoría genérica 'Pokemon' y otra específica como 'Seed' o 'Flame', así que
+filtré en Python la palabra 'Pokemon' para quedarme con la categoría real."
+
+PREGUNTA 4: "¿Cómo has limpiado los datos antes de guardarlos en el CSV?"
+RESPUESTA:
+"En la web el precio venía como texto con el símbolo de la libra ('£63.00'), el
+peso con '15.2 kg' y el stock como '45 in stock'. Usé expresiones regulares
+(módulo re de Python) dentro de scraper.py para quitar los símbolos y letras y
+convertirlos a float e int antes de exportarlos con Pandas a pokemons.csv."
+
+PREGUNTA 5: "¿Qué conclusión o análisis sacas de los gráficos en Streamlit?"
+RESPUESTA:
+"Al cruzar el stock y el peso con el precio mediante gráficos de dispersión y
+calcular el coeficiente de correlación con Pandas (.corr()), comprobamos que la
+correlación es cercana a 0 (muy débil). Es decir, ni tener menos stock ni pesar
+más hace que un Pokémon sea más caro en esta tienda; en cambio, agrupando por
+categoría con groupby() sí vemos qué tipos de Pokémon tienen un precio medio
+superior."
+================================================================================
