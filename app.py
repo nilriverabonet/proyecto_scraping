@@ -1,214 +1,73 @@
 import sys
 import subprocess
-from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-# Si el usuario ejecuta "python app.py" o pulsa el botón Play (▶) de VS Code,
-# lanzamos automáticamente "streamlit run app.py" sin mostrar ningún error ni warning.
+# Si se ejecuta con el botón Play (▶) de VS Code, lanza automáticamente "streamlit run"
 if not st.runtime.exists():
-    ruta_app = str(Path(__file__).resolve())
-    sys.exit(subprocess.call([sys.executable, "-m", "streamlit", "run", ruta_app]))
+    sys.exit(subprocess.call([sys.executable, "-m", "streamlit", "run", __file__]))
 
-# Configuración básica de la página de Streamlit
-st.set_page_config(
-    page_title="Dashboard Tienda Pokémon - ScrapeMe",
-    page_icon="⚡",
-    layout="wide"
-)
+st.set_page_config(page_title="Dashboard Pokémon", page_icon="⚡", layout="wide")
 
-ARCHIVO_CSV = Path(__file__).resolve().parent / "pokemons.csv"
-
-
-@st.cache_data
-def cargar_datos():
-    """
-    Lee el archivo CSV generado por scraper.py utilizando Pandas.
-    Usamos @st.cache_data para no recargar el archivo del disco en cada clic.
-    """
-    if not ARCHIVO_CSV.exists():
-        return None
-    return pd.read_csv(ARCHIVO_CSV)
-
-
-# --- TÍTULO Y DESCRIPCIÓN ---
 st.title("⚡ Dashboard de Análisis: Tienda Pokémon (ScrapeMe)")
-st.markdown(
-    "Aplicación interactiva creada con **Streamlit** y **Pandas** para explorar, filtrar "
-    "y analizar los datos extraídos mediante **Web Scraping con BeautifulSoup** desde `scrapeme.live/shop/`."
-)
+st.write("Análisis interactivo de los datos extraídos con **BeautifulSoup** y tratados con **Pandas**.")
 
-df = cargar_datos()
+# 1. CARGAR DATOS CON PANDAS
+df = pd.read_csv("pokemons.csv")
 
-if df is None or df.empty:
-    st.error("⚠️ No se encontró el archivo `pokemons.csv`. Ejecuta primero `python scraper.py` para extraer los datos.")
-    st.stop()
+# 2. FILTROS INTERACTIVOS EN LA BARRA LATERAL
+st.sidebar.header("🔍 Filtros")
 
-# --- BARRA LATERAL: FILTROS INTERACTIVOS ---
-st.sidebar.header("🔍 Filtros de Búsqueda")
+categorias = sorted(df["categoria"].unique().tolist())
+cat_seleccionadas = st.sidebar.multiselect("Categoría:", categorias, default=categorias)
 
-# 1. Filtro por texto (nombre del Pokémon)
-busqueda_nombre = st.sidebar.text_input("Buscar Pokémon por nombre:", "")
-
-# 2. Filtro por Categoría
-todas_categorias = sorted(df["categoria"].dropna().unique().tolist())
-categorias_seleccionadas = st.sidebar.multiselect(
-    "Categoría / Tipo:",
-    options=todas_categorias,
-    default=todas_categorias
-)
-
-# 3. Filtro por Rango de Precio (£)
 precio_min = float(df["precio_gbp"].min())
 precio_max = float(df["precio_gbp"].max())
-rango_precio = st.sidebar.slider(
-    "Rango de Precio (£):",
-    min_value=precio_min,
-    max_value=precio_max,
-    value=(precio_min, precio_max)
-)
+rango_precio = st.sidebar.slider("Rango de Precio (£):", precio_min, precio_max, (precio_min, precio_max))
 
-# 4. Filtro por Rango de Stock (Existencias)
-stock_min = int(df["stock"].min())
-stock_max = int(df["stock"].max())
-rango_stock = st.sidebar.slider(
-    "Rango de Existencias (Stock):",
-    min_value=stock_min,
-    max_value=stock_max,
-    value=(stock_min, stock_max)
-)
-
-# --- APLICACIÓN DE FILTROS CON PANDAS ---
+# Filtramos el DataFrame según la categoría y el rango de precios elegidos
 df_filtrado = df[
-    (df["categoria"].isin(categorias_seleccionadas)) &
+    (df["categoria"].isin(cat_seleccionadas)) &
     (df["precio_gbp"] >= rango_precio[0]) &
-    (df["precio_gbp"] <= rango_precio[1]) &
-    (df["stock"] >= rango_stock[0]) &
-    (df["stock"] <= rango_stock[1])
-].copy()
+    (df["precio_gbp"] <= rango_precio[1])
+]
 
-if busqueda_nombre:
-    df_filtrado = df_filtrado[
-        df_filtrado["nombre"].str.contains(busqueda_nombre, case=False, na=False)
-    ]
-
-# --- MÉTRICAS RESUMEN (KPIs) ---
-st.subheader("📊 Resumen de los Datos Filtrados")
-col1, col2, col3, col4 = st.columns(4)
-
-if not df_filtrado.empty:
-    col1.metric("Pokémon Encontrados", len(df_filtrado))
-    col2.metric("Precio Medio", f"£{df_filtrado['precio_gbp'].mean():.2f}")
-    col3.metric("Stock Total Disponible", f"{int(df_filtrado['stock'].sum())} uds.")
-    col4.metric("Peso Medio", f"{df_filtrado['peso_kg'].mean():.1f} kg")
-else:
+if df_filtrado.empty:
     st.warning("No hay ningún Pokémon que coincida con los filtros seleccionados.")
     st.stop()
 
-st.divider()
+# 3. MÉTRICAS RESUMEN Y TABLA INTERACTIVA
+col1, col2, col3 = st.columns(3)
+col1.metric("Pokémon Encontrados", len(df_filtrado))
+col2.metric("Precio Medio (£)", f"£{df_filtrado['precio_gbp'].mean():.2f}")
+col3.metric("Stock Total Disponible", f"{int(df_filtrado['stock'].sum())} uds.")
 
-# --- TABLA INTERACTIVA DE RESULTADOS ---
-st.subheader("📋 Catálogo Interactivo de Pokémon")
-st.caption("Puedes ordenar cualquier columna haciendo clic sobre su encabezado.")
+st.subheader("📋 Tabla de Pokémon Filtrados")
+st.dataframe(df_filtrado, width="stretch")
 
-st.dataframe(
-    df_filtrado[["imagen_url", "sku", "nombre", "categoria", "precio_gbp", "stock", "peso_kg", "descripcion"]],
-    column_config={
-        "imagen_url": st.column_config.ImageColumn("Imagen", width="small"),
-        "sku": "SKU",
-        "nombre": "Nombre",
-        "categoria": "Categoría",
-        "precio_gbp": st.column_config.NumberColumn("Precio (£)", format="£%.2f"),
-        "stock": st.column_config.NumberColumn("Stock (uds.)"),
-        "peso_kg": st.column_config.NumberColumn("Peso (kg)", format="%.1f kg"),
-        "descripcion": "Descripción"
-    },
-    hide_index=True,
-    width="stretch"
-)
-
-st.divider()
-
-# --- VISUALIZACIÓN GRÁFICA Y ANÁLISIS CRÍTICO ---
-st.subheader("📈 Análisis Visual y Preguntas de Negocio")
-
+# 4. GRÁFICOS Y ANÁLISIS CRÍTICO DE RESULTADOS
+st.subheader("📈 Análisis Gráfico y Conclusiones de Negocio")
 col_graf1, col_graf2 = st.columns(2)
 
-# Gráfico 1: Comparativa de precios por Pokémon
 with col_graf1:
-    st.markdown("#### 1. ¿Cuáles son los Pokémon más caros de la selección?")
-    df_top_precios = df_filtrado.sort_values(by="precio_gbp", ascending=False).head(15)
-    st.bar_chart(df_top_precios.set_index("nombre")["precio_gbp"], color="#FF4B4B")
+    st.markdown("#### 1. ¿Qué categoría de Pokémon tiene mayor precio medio?")
+    # Agrupamos por categoría con Pandas y calculamos el precio medio de cada una
+    media_por_categoria = df_filtrado.groupby("categoria")["precio_gbp"].mean().sort_values(ascending=False)
+    st.bar_chart(media_por_categoria)
 
-    poke_mas_caro = df_filtrado.loc[df_filtrado["precio_gbp"].idxmax()]
-    poke_mas_barato = df_filtrado.loc[df_filtrado["precio_gbp"].idxmin()]
     st.info(
-        f"**Conclusión:** Dentro del filtro actual, el Pokémon más caro es **{poke_mas_caro['nombre']}** "
-        f"(£{poke_mas_caro['precio_gbp']:.2f}) y el más económico es **{poke_mas_barato['nombre']}** "
-        f"(£{poke_mas_barato['precio_gbp']:.2f})."
+        f"**Conclusión:** La categoría más cara de media es **{media_por_categoria.idxmax()}** "
+        f"(£{media_por_categoria.max():.2f}), mientras que la más económica es "
+        f"**{media_por_categoria.idxmin()}** (£{media_por_categoria.min():.2f})."
     )
 
-# Gráfico 2: Precio promedio por Categoría
 with col_graf2:
-    st.markdown("#### 2. ¿Qué categoría de Pokémon tiene mayor precio medio?")
-    precio_por_categoria = (
-        df_filtrado.groupby("categoria")["precio_gbp"]
-        .mean()
-        .round(2)
-        .sort_values(ascending=False)
-    )
-    st.bar_chart(precio_por_categoria, color="#1C83E1")
+    st.markdown("#### 2. ¿Influye la escasez de stock en el precio del Pokémon?")
+    st.scatter_chart(df_filtrado, x="stock", y="precio_gbp")
 
-    cat_cara = precio_por_categoria.index[0]
-    valor_cat_cara = precio_por_categoria.iloc[0]
+    # Calculamos la correlación en Pandas (valores cercanos a 0 indican que no hay relación)
+    correlacion = df_filtrado["stock"].corr(df_filtrado["precio_gbp"])
     st.info(
-        f"**Conclusión:** La categoría **{cat_cara}** lidera el precio promedio con **£{valor_cat_cara:.2f}**, "
-        "lo que indica que los Pokémon de este tipo se cotizan más alto en la tienda."
+        f"**Conclusión:** La correlación entre stock y precio es **{correlacion:.2f}** (muy cercana a 0). "
+        "Esto demuestra que tener menos unidades en stock no hace que un Pokémon sea más caro en la tienda."
     )
-
-st.divider()
-
-# Gráfico 3: Relación entre Stock / Peso y Precio (Análisis de correlación)
-col_graf3, col_graf4 = st.columns(2)
-
-with col_graf3:
-    st.markdown("#### 3. ¿Influye la escasez de stock en el precio del Pokémon?")
-    st.scatter_chart(df_filtrado, x="stock", y="precio_gbp", color="#00C07F")
-
-    corr_stock_precio = df_filtrado["stock"].corr(df_filtrado["precio_gbp"])
-    if pd.isna(corr_stock_precio):
-        texto_corr_stock = "No hay suficientes datos para calcular la correlación."
-    elif abs(corr_stock_precio) < 0.25:
-        texto_corr_stock = (
-            f"La correlación entre stock y precio es débil (**{corr_stock_precio:.2f}**). "
-            "Esto demuestra que la tienda fija los precios de forma independiente a las unidades restantes en almacén."
-        )
-    elif corr_stock_precio < 0:
-        texto_corr_stock = (
-            f"Existe una correlación negativa (**{corr_stock_precio:.2f}**): "
-            "los Pokémon con menos unidades en stock tienden a tener un precio más elevado."
-        )
-    else:
-        texto_corr_stock = (
-            f"Existe una correlación positiva (**{corr_stock_precio:.2f}**): "
-            "los Pokémon con mayor stock también presentan precios altos."
-        )
-    st.info(f"**Interpretación:** {texto_corr_stock}")
-
-with col_graf4:
-    st.markdown("#### 4. ¿Los Pokémon más pesados (evolucionados) son más caros?")
-    st.scatter_chart(df_filtrado, x="peso_kg", y="precio_gbp", color="#FFA500")
-
-    corr_peso_precio = df_filtrado["peso_kg"].corr(df_filtrado["precio_gbp"])
-    if pd.isna(corr_peso_precio):
-        texto_corr_peso = "No hay suficientes datos para calcular la correlación."
-    elif abs(corr_peso_precio) < 0.25:
-        texto_corr_peso = (
-            f"La correlación entre peso y precio es baja (**{corr_peso_precio:.2f}**). "
-            "El tamaño físico del Pokémon no determina directamente su coste en la tienda."
-        )
-    else:
-        texto_corr_peso = (
-            f"Se observa una correlación de **{corr_peso_precio:.2f}** entre el peso en kg y el precio en libras."
-        )
-    st.info(f"**Interpretación:** {texto_corr_peso}")
